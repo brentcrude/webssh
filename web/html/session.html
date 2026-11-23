@@ -1,0 +1,1078 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ssheasy — session</title>
+
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css" />
+
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+
+    <script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
+    <script src="node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+    <script src="node_modules/@xterm/addon-search/lib/addon-search.js"></script>
+    <script src="node_modules/@xterm/addon-web-links/lib/addon-web-links.js"></script>
+    <script src="node_modules/@xterm/addon-serialize/lib/addon-serialize.js"></script>
+
+    <script src="wasm_exec.js"></script>
+    <script type="text/javascript">
+
+function fetchAndInstantiate(url, importObject) {
+  return fetch(url).then(response =>
+    response.arrayBuffer()
+  ).then(bytes =>
+    WebAssembly.instantiate(bytes, importObject)
+  ).then(results =>
+      results.instance
+  );
+}
+var go = new Go();
+var mod = fetchAndInstantiate("/main.wasm", go.importObject);
+window.onload = function() {
+  mod.then(function(instance) {
+    go.run(instance);
+    handleConnectFromQuery();
+  });
+  notReady = function() {
+    return  $("portInp").val() == "" || $('#hostInp').val() == "" || $('#usrInp').val() == "" ||
+      ($('#passInp').val() == "" && $('#pkInp').val() == "" && $('#webauthnKeySelect').val() == -1) 
+  }
+  pkFileOpen = function(evt) {
+    const input = event.target
+    if ('files' in input && input.files.length > 0) {
+      console.log("open" + input.files[0])
+	    placeFileContent(document.getElementById('pkInp'), input.files[0])
+    }
+  }
+
+  function placeFileContent(target, file) {
+    readFileContent(file).then(content => {
+      target.value = content
+      $('#conBtn').prop('disabled', notReady() ? true : false); 
+    }).catch(error => console.log(error))
+  }
+
+  function readFileContent(file) {
+    const reader = new FileReader()
+    return new Promise((resolve, reject) => {
+      reader.onload = event => resolve(event.target.result)
+      reader.onerror = error => reject(error)
+      reader.readAsText(file)
+    })
+  }
+
+  function deleteConnectionHistoryItem(i) {
+    var history = JSON.parse(localStorage.getItem("historyList")) || [];
+    history.splice(i,1);
+    localStorage.setItem("historyList", JSON.stringify(history));
+    renderHistoryList();
+  }
+
+  function saveHistory() {
+    var user = $('#usrInp').val()
+    var host = $('#hostInp').val() 
+    var port = $("#portInp").val()
+    var bypassProxy = $('#bypassProxyInp').is(':checked')
+    var wKey = $('#webauthnKeySelect').val();
+    var histItem = {user: user, host: host, port: port, bypassProxy: bypassProxy, webAuthnKey: wKey}
+    var history = JSON.parse(localStorage.getItem("historyList")) || [];
+    for(var i = 0, len = history.length; i < len; i++) {
+      var item = history[i]; 
+      if(item.user == user && item.host == host && item.port == port && item.bypassProxy == bypassProxy && (item.webAuthnKey == wKey || (item.webAuthnKey == undefined && wKey == -1))) {
+        return
+      }
+    }
+    history.push(histItem);
+    localStorage.setItem("historyList", JSON.stringify(history));
+    renderHistoryList();
+  }
+
+  function loadConnectionData(con) {
+    $('#usrInp').val(con.user)
+    $('#hostInp').val(con.host) 
+    $("#portInp").val(con.port)
+    $('#bypassProxyInp').prop('checked', con.bypassProxy)
+    if(con.webAuthnKey != undefined) {
+      $('#webauthnKeySelect').val(con.webAuthnKey )
+    }
+  }
+
+  function renderHistoryList() {
+    var itemList = JSON.parse(localStorage.getItem("historyList")) || [];
+    var listContainer = document.getElementById("historyList");
+    listContainer.innerHTML = "";
+    var df = function(ind) {
+        return function() {
+          deleteConnectionHistoryItem(ind);
+        }
+      }
+    var lf = function(item) {
+      return function(event) {
+          loadConnectionData(item);
+      };
+    }
+    for(var i = 0, len = itemList.length; i < len; i++) {
+      var item = itemList[i]; 
+      conStr = item.user + "@" + item.host + ":" + item.port
+      var listItem = document.createElement("li");
+      const el = document.createElement('div');
+      el.addEventListener('click', lf(item));
+      el.title = conStr;
+      el.appendChild(document.createTextNode(conStr));
+      var deleteBtn = document.createElement("button");
+      deleteBtn.innerHTML = "X";
+      deleteBtn.addEventListener('click', df(i));
+      listItem.appendChild(deleteBtn);
+      listItem.appendChild(el);
+      listContainer.appendChild(listItem);
+    }
+  }
+
+  showServerKey = function(key) {
+    $('#fingerprintMsg').html("RSA key fingerprint is " + key + " <br>Are you sure you want to continue connecting (yes/no)?")
+    $('#fingerprintModal').modal('show')
+  }
+
+  connected = function(status, home) {
+    saveHistory();
+    $('#msg').html('').hide();
+    $('#errMsg').hide();
+    $('#conBtn').prop('disabled', false);
+    $('#conPan').hide();
+    $('#conInf').text(status || '');
+    $('#workspace').addClass('is-connected');
+    $('#paneFilesTab').prop('disabled', home == "nil");
+    switchPane('term');
+    notifyParent('connected', String(status || '').replace(/^Connected to\s+/, ''));
+
+    setTimeout(function () {
+      if (typeof fitAddon !== 'undefined' && fitAddon && term) {
+        fitAddon.fit();
+        if (typeof changeWindowSize === 'function') { changeWindowSize(term.rows, term.cols); }
+        term.focus();
+      }
+    }, 80);
+  }
+
+  function handleConnectFromQuery() {
+    const params = new URL(window.location.href).searchParams;
+    const host = params.get("host");
+    if (!host) { return; }
+    const port = params.get("port") || 22;
+    const user = params.get("user");
+    const password = params.get("password");
+    const pk = params.get("pk") || "";
+    const webauthnKey = params.get("webauthnKey") || -1;
+    const doConnect = params.get("connect") || "true";
+
+    if (user) { $('#usrInp').val(user); }
+    $('#hostInp').val(host);
+    $('#portInp').val(port);
+    if (password) { $('#passInp').val(password); }
+    if (pk) { $('#pkInp').val(pk); }
+    if (webauthnKey != -1) { $('#webauthnKeySelect').val(webauthnKey); }
+    notifyParent('idle', (user || $('#usrInp').val()) + '@' + host);
+
+    if (doConnect === "true") {
+      showMsg('Connecting...');
+      $('#conBtn').prop('disabled', true);
+      initConnection(term.rows, term.cols, host, Number(port), user, password, pk,
+        $('#bypassProxyInp').is(':checked'), false, webauthnKey != -1);
+    }
+  }
+
+  // The file browser is a pane in this layout, so showing/hiding it is a
+  // pane switch. (The old implementation detached the iframe from the DOM,
+  // which would leave the Files pane empty after the switch back.)
+  function updateFileBrowserVisibility(show) {
+    switchPane(show ? 'files' : 'term');
+  }
+  var detachedFileBrowserIframe = null; 
+  base64ToUint8Array = function(base64) {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+}
+  showCreatePublicKey = function() {
+    var canCreate = function() {
+      return $('#wauthnKeyName').val() != ""
+    }
+    $('#wauthnKeyName').keyup(function(){ $('#wauthnKeyCreateBtn').prop('disabled', canCreate() ? false : true); })
+    $('#wauthnKeyCreateBtn').prop('disabled',true)
+    $('#createKeyModal').modal('show');
+  }
+  
+  createPublicKey = function(name, type) {
+      const publicKeyCredentialCreationOptions = {
+          challenge: Uint8Array.from(
+            window.crypto.randomUUID(), c => c.charCodeAt(0)),
+          rp: {
+              name: "SSH Easy",
+              id: window.location.hostname,
+          },
+          user: {
+              id: Uint8Array.from(
+                window.crypto.randomUUID(), c => c.charCodeAt(0)),
+              name: name,
+              displayName: name,
+          },
+          pubKeyCredParams: [{alg: -7, type: "public-key"}], // -7: ES256 https://www.iana.org/assignments/cose/cose.xhtml#algorithms
+          authenticatorSelection: {
+              authenticatorAttachment: type,
+          },
+          timeout: 60000,
+          attestation: "direct"
+      };
+
+      navigator.credentials.create({
+          publicKey: publicKeyCredentialCreationOptions
+      }).then(function(creds) {
+        var pk = parsePublicKey(JSON.stringify(creds))
+        showMsg('Copy paster the following public key into your servers <i>authorized_keys</i> file: <code>' + pk.sshKey + '</code>')
+        pk.name = name
+        pk.type = type
+        console.log(pk)
+        saveWebauthnKey(pk);
+      })
+  }
+
+  function saveWebauthnKey(pk) {
+    var keys = JSON.parse(localStorage.getItem("webauthnKeys")) || [];
+    keys.push(pk);
+    localStorage.setItem("webauthnKeys", JSON.stringify(keys));
+    renderWebauthnKeySelector();
+  }
+
+  function renderWebauthnKeySelector() {
+    var itemList = JSON.parse(localStorage.getItem("webauthnKeys")) || [];
+    var listContainer = $('#webauthnKeySelect');
+    listContainer.empty()
+    listContainer.append($('<option>', {
+        value: -1,
+        text: "Select Webauthn Key"
+    }));
+    for(var i = 0, len = itemList.length; i < len; i++) {
+      var pk = itemList[i]; 
+      listContainer.append($('<option>', {
+          value: i,
+          text: pk.name
+      }));
+    }
+    $('#webauthnKeySelect').on('change', function(e){
+      if (this.value == null || this.value == -1) {
+        showMsg('') 
+        return
+      }
+      var pk = itemList[this.value]; 
+      showMsg('Selected public key: <code>' + pk.sshKey + '</code>')
+    });
+  }
+
+  getSelectedWebauthnKey = function() {
+    var itemList = JSON.parse(localStorage.getItem("webauthnKeys"));
+    return itemList[$('#webauthnKeySelect').val()]
+  }
+
+  retrievePublicKey = function(challenge) {
+    if($('#webauthnKeySelect').val() == -1){
+      console.log("No key selected")
+      return Promise.reject("No key selected")
+    }
+    pk = getSelectedWebauthnKey()
+    var rawID = base64ToUint8Array(pk.ID)
+    const publicKeyCredentialRequestOptions = {
+        challenge: base64ToUint8Array(challenge),
+        timeout: 60000,
+        allowCredentials: [
+            {
+                type: "public-key",
+                id: rawID,
+            }
+        ]
+    }
+    return navigator.credentials.get({
+        publicKey: publicKeyCredentialRequestOptions
+    });
+  }
+
+  showReconnect = function(errorMsg) {
+    notifyParent('error');
+    $('#connLostMsg').html("The connection to your server was interrupted: " + errorMsg + "<br>Do you want to reconnect?")
+    $('#reconnectModal').modal('show')
+  }
+
+  reconnect = function(shouldReconnect) {
+    if(shouldReconnect) {
+      initConnection(term.rows, term.cols,$('#hostInp').val(),Number($('#portInp').val()),$('#usrInp').val(),$('#passInp').val(),$('#pkInp').val(), $('#bypassProxyInp').is(':checked'), false, $('#webauthnKeySelect').val() > -1);
+    }else {
+      $('#conPan').show();
+      updateFileBrowserVisibility(false); // Hide file browser
+    }
+  }
+
+  showMsg = function(msg) {
+    $('#errMsg').hide()
+    $('#msg').show()
+    $('#msg').html(msg);
+  } 
+
+  showErr = function(msg) {
+    $('#msg').hide();
+    $('#conPan').show();
+    $('#conBtn').prop('disabled',false);
+    $('#errMsg').show();
+    $('#errMsg').html(msg);
+  }
+
+  makeTermFullScreen = function(){
+    element = $('#termContainer').get(0);
+    if (element.requestFullscreen) {
+      element.requestFullscreen();
+    } else if (element.mozRequestFullScreen) {
+      element.mozRequestFullScreen();
+    } else if (element.webkitRequestFullscreen) {
+      element.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
+    } else if (element.msRequestFullscreen) {
+      element.msRequestFullscreen();
+    }
+  }
+
+  exitFS = function() {
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    } else if (document.mozCancelFullScreen) {
+      document.mozCancelFullScreen();
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    } else if (document.msExitFullscreen) {
+      document.msExitFullscreen();
+    }
+  }
+
+   toggleFullScreen = function() {
+    if (!document.fullscreenElement) {
+      makeTermFullScreen();
+    } else if (document.exitFullscreen) {
+      exitFS();
+    }
+}
+  downloadHistory = function(filename) {
+    var element = document.createElement('a');
+    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(serializeAddon.serialize()));
+    element.setAttribute('download', filename);
+
+    element.style.display = 'none';
+    document.body.appendChild(element);
+
+    element.click();
+
+    document.body.removeChild(element);
+  }
+
+
+  async function registerSW() {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    navigator.serviceWorker.ready.then((registration) => {
+      console.log(`A service worker is active: ${registration.active}`);
+    });
+    return
+    console.log('SW ready');
+  }
+
+  registerSW().then(() => {
+    console.log('SW registered');
+    }).catch(err => {
+    console.error('SW registration failed', err);
+  });
+
+  // Handle messages from the Service Worker for intercepted fetches.
+  // The service worker posts messages with { type: 'FETCH_INTERCEPT', data: reqData }
+  // We call the Go `forward` function (exposed as `forward`) and return the response
+  // back to the service worker as { type: 'FETCH_INTERCEPT_RESPONSE', id, response }.
+  navigator.serviceWorker.addEventListener('message', async function(event) {
+    console.log('SW message received', event.data);
+    try {
+      const msg = event.data;
+      if (!msg || msg.type !== 'FETCH_INTERCEPT') return;
+      const req = msg.data || {};
+
+      // Build headers array expected by proxy.forward: [[name, value], ...]
+      const headersArr = [];
+      if (req.headers && typeof req.headers === 'object') {
+        for (const k of Object.keys(req.headers)) {
+          headersArr.push([k, req.headers[k]]);
+        }
+      }
+
+      // Prepare body as Uint8Array (forward expects a typed array for non-GET/HEAD)
+      let bodyUint8 = new Uint8Array(0);
+      if (req.body !== undefined && req.body !== null && req.body !== '') {
+        if (typeof req.body === 'string') {
+          bodyUint8 = new TextEncoder().encode(req.body);
+        } else if (req.body instanceof ArrayBuffer) {
+          bodyUint8 = new Uint8Array(req.body);
+        } else if (req.body instanceof Uint8Array) {
+          bodyUint8 = req.body;
+        } else {
+          // Fallback: stringify
+          bodyUint8 = new TextEncoder().encode(String(req.body));
+        }
+      }
+
+      const requestObj = {
+        id: req.id,
+        host: req.host,
+        ssheasyHost: window.location.host,
+        sshClientID: req.sshClientID,
+        method: req.method,
+        url: req.url,
+        headers: headersArr,
+        body: bodyUint8,
+      };
+
+      const postResponseToSW = resp => {
+        const payload = { type: 'FETCH_INTERCEPT_RESPONSE', id: req.id, response: resp };
+        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage(payload);
+        } else {
+          // fallback to registration.active
+          navigator.serviceWorker.ready.then(reg => {
+            if (reg && reg.active) reg.active.postMessage(payload);
+          }).catch(() => {});
+        }
+      };
+
+      if (typeof forward !== 'function') {
+        postResponseToSW({ status: 500, body: 'forward not available', headers: [] });
+        return;
+      }
+
+      forward(requestObj, function(res) {
+        try {
+          postResponseToSW(res);
+        } catch (e) {
+          postResponseToSW({ status: 500, body: String(e), headers: [] });
+        }
+      });
+    } catch (err) {
+      console.error('Error handling SW fetch intercept message', err);
+    }
+  });
+
+
+  openWebTunel = function(url) {
+    var myID
+    fetch('/registerportforward')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.text();
+        })
+        .then(data => {
+            console.log('Successfully registered port forward:', data);
+            myID = data;
+            if (myID == null || myID == "" ) {
+              console.error('client id cannot be tetrieved', myID);
+              return
+            }
+            window.open("/portforward/" + myID + "/" + url, '_blank').focus();
+        })
+        .catch(error => {
+            console.error('Error registering port forward:', error);
+        });
+  }
+
+  $(document).ready(function(){
+    $('#conBtn').prop('disabled',true);
+    $('#hostInp').keyup(function(){ $('#conBtn').prop('disabled', notReady() ? true : false); })
+    $('#portInp').keyup(function(){ $('#conBtn').prop('disabled', notReady() ? true : false); })
+    $('#usrInp').keyup(function(){ $('#conBtn').prop('disabled', notReady() ? true : false); })
+    $('#passInp').keyup(function(){ $('#conBtn').prop('disabled', notReady() ? true : false); })
+    $('#pkInp').keyup(function(){ $('#conBtn').prop('disabled', notReady() ? true : false); })
+    $("#webauthnKeySelect").change(function() { $('#conBtn').prop('disabled', notReady() ? true : false); });
+    $('#pkFile').change(pkFileOpen);
+    $('#msg').hide()
+    $('#errMsg').hide()
+    updateFileBrowserVisibility(false);
+    $('#toggleFileBrowserBtn').on('click', function() {
+        updateFileBrowserVisibility($('#fileBrowserRow').hasClass('d-none'));
+    });
+    renderHistoryList()
+    renderWebauthnKeySelector()
+  });
+  var home = "/";
+
+};
+
+    
+    </script>
+    <style>
+      :root {
+        --bg: #eef0f3;
+        --panel: #ffffff;
+        --line: #dde1e7;
+        --text: #171b21;
+        --muted: #6a7484;
+        --accent: #2563eb;
+        --accent-soft: #e8f0fe;
+        --term: #111418;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* workspace */
+      #workspace {
+        position: relative;
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--panel);
+      }
+      #workspace:fullscreen { background: var(--term); }
+
+      .toolbar {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 44px;
+        padding: 0 10px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+      }
+      .toolbar .spacer { flex: 1; }
+      .pane-tabs { display: flex; gap: 2px; padding: 3px; background: #f1f3f6; border-radius: 8px; }
+      .pane-tab {
+        border: 0;
+        background: transparent;
+        border-radius: 6px;
+        padding: 5px 12px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 520;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .pane-tab:hover:not(:disabled) { color: var(--text); }
+      .pane-tab.is-active { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(16,24,40,.08); }
+      .pane-tab:disabled { opacity: .45; cursor: default; }
+      .divider { width: 1px; height: 22px; background: var(--line); }
+
+      .ghost {
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 13px;
+        padding: 5px 8px;
+        border-radius: 7px;
+        cursor: pointer;
+      }
+      .ghost:hover:not(:disabled) { background: #f1f3f6; color: var(--text); }
+      .ghost:disabled { opacity: .45; cursor: default; }
+      .connect .ghost { padding: 6px 10px; border: 1px solid var(--line); background: var(--panel); }
+
+      .search { display: flex; align-items: center; gap: 6px; }
+      .search input[type=text] {
+        width: 170px;
+        height: 30px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        font: inherit;
+        font-size: 13px;
+        background: var(--panel);
+        color: var(--text);
+      }
+      .check {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--muted);
+        user-select: none;
+        font-weight: 520;
+      }
+      .check input { margin: 0; }
+
+      @media (max-width: 900px) {
+        .toolbar { flex-wrap: wrap; height: auto; padding: 6px 8px; }
+        .toolbar .spacer { display: none; }
+        .toolbar .search { order: 3; width: 100%; }
+        .toolbar .search input[type=text] { flex: 1; width: auto; }
+      }
+
+      /* panes */
+      .panes { position: relative; flex: 1; min-height: 0; }
+      #pane-term { position: absolute; inset: 0; padding: 8px 10px; background: var(--term); }
+      #terminal { height: 100%; }
+      #fileBrowserRow { position: absolute; inset: 0; z-index: 2; padding: 8px; background: var(--panel); }
+      .iframe-container { height: 100%; overflow: hidden; }
+      .iframe-container iframe { display: block; width: 100%; height: 100%; border: 0; }
+
+      /* status bar */
+      .statusbar {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 30px;
+        padding: 0 12px;
+        border-top: 1px solid var(--line);
+        background: #fafbfc;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .statusbar .spacer { flex: 1; }
+      #msg, #errMsg { margin: 0; font-size: 12px; }
+      #errMsg { color: #b42318; }
+
+      /* connect panel */
+      .connect {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        display: flex;
+        padding: 24px;
+        overflow: auto;
+        scrollbar-width: thin;
+        background: rgba(238, 240, 243, .93);
+        backdrop-filter: blur(3px);
+      }
+      /* auto margins centre the card when it fits and let it scroll from the
+         top when it does not, instead of clipping its own heading */
+      .connect-card {
+        margin: auto;
+        width: 100%;
+        max-width: 780px;
+        padding: 20px 22px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: 0 12px 32px rgba(16, 24, 40, .10);
+      }
+      .connect-card h2 { margin: 0 0 2px; font-size: 16.5px; font-weight: 640; letter-spacing: -.01em; }
+      .connect-card .sub { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); }
+      .connect-body { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 20px; }
+      @media (max-width: 720px) { .connect-body { grid-template-columns: minmax(0, 1fr); } }
+
+      .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 0; }
+      .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+      .span2 { grid-column: 1 / -1; }
+      .label-row { display: flex; align-items: center; justify-content: space-between; }
+      .file-btn { margin: 0; font-size: 12px; font-weight: 520; color: var(--accent); cursor: pointer; }
+      .file-btn:hover { text-decoration: underline; }
+      .row-inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+      .connect label { margin: 0; font-size: 12px; font-weight: 520; color: var(--muted); }
+      .connect input[type=text],
+      .connect input[type=password],
+      .connect input[type=number],
+      .connect select,
+      .connect textarea {
+        width: 100%;
+        min-height: 36px;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--text);
+        font: inherit;
+        font-size: 13px;
+      }
+      .connect textarea {
+        min-height: 48px;
+        resize: vertical;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .connect input:focus, .connect select:focus, .connect textarea:focus {
+        outline: 2px solid var(--accent-soft);
+        border-color: #b9cdf5;
+      }
+      .primary {
+        width: 100%;
+        height: 36px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 560;
+        cursor: pointer;
+      }
+      .primary:hover:not(:disabled) { background: #1d54d0; }
+      .primary:disabled { background: #c7d1e0; cursor: default; }
+
+      .recent h3 {
+        margin: 0 0 8px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: .05em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      #historyList {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        max-height: 250px;
+        margin: 0;
+        padding: 0;
+        overflow-y: auto;
+        list-style: none;
+      }
+      #historyList li { display: flex; align-items: center; gap: 4px; border-radius: 7px; }
+      #historyList li > div {
+        flex: 1;
+        min-width: 0;
+        padding: 6px 8px;
+        border-radius: 7px;
+        font-size: 12.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        cursor: pointer;
+      }
+      #historyList li > div:hover { background: #f1f3f6; }
+      #historyList li button {
+        padding: 4px 6px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: #a8b0bb;
+        font-size: 14px;
+        line-height: 1;
+        cursor: pointer;
+        opacity: 0;
+      }
+      #historyList li:hover button { opacity: 1; }
+      #historyList li button:hover { background: #fde8e8; color: #b42318; }
+      #historyList:empty::after { content: "No recent connections"; font-size: 12px; color: #a8b0bb; }
+
+      /* bootstrap modal polish */
+      .modal-content { border: 1px solid var(--line); border-radius: 12px; }
+      .modal-header, .modal-footer { padding: 14px 18px; border-color: var(--line); }
+      .modal-body { padding: 18px; font-size: 13px; }
+      .modal-title { font-size: 15px; font-weight: 620; }
+      .modal-body code { padding: 1px 5px; border-radius: 4px; background: #f1f3f6; font-size: 12px; }
+      .modal-footer .btn { border-radius: 8px; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+<div id="fingerprintModal" class="modal" tabindex="-1" role="dialog">
+          <div class="modal-dialog" role="document">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Server fingerprint</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close" onclick="acceptFingerprint(false);">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div id="fingerprintMsg" class="modal-body">
+                
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-dismiss="modal"   onclick="acceptFingerprint(true);">Yes</button>
+                <button type="button" class="btn btn-secondary" data-dismiss="modal" onclick="acceptFingerprint(false);">No</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      
+        <div id="reconnectModal" class="modal" tabindex="-1" role="dialog">
+          <div class="modal-dialog" role="document">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Connection lost</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close" onclick="reconnect(false);">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div id="connLostMsg" class="modal-body">
+                  The connection to your server was interrupted.
+                  Do you want to reconnect?
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-dismiss="modal"   onclick="reconnect(true);">Yes</button>
+                <button type="button" class="btn btn-secondary" data-dismiss="modal" onclick="reconnect(false);">No</button>
+              </div>
+            </div>
+          </div>
+        </div>   
+          
+        <div id="createKeyModal" class="modal" tabindex="-1" role="dialog">
+          <div class="modal-dialog" role="document">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Create a Webauthn key</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div  class="modal-body">
+                <form>
+                <div class="form-group row">
+                  <label class="col-sm-4 col-form-label"> Name of the key </label>
+                  <div class="col-sm-8">
+                    <input id="wauthnKeyName" type="text"  class="form-control" title="The name you can use later to select the key">
+                  </div>
+                </div>
+                <div class="form-group row">
+                  <label class="col-sm-4 col-form-label"> Type of the key </label>
+                  <div class="col-sm-8">
+                  <div class="form-check-inline">
+                    <input class="form-check-input" type="radio" name="wauthnKeyType" id="wauthnKeyTypePlatform" value="platform" checked>
+                    <label class="form-check-label" for="wauthnKeyTypePlatform" title="The key is stored and managed by the current browser">
+                      Platform
+                    </label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="wauthnKeyType" id="wauthnKeyTypeCrossPlatform " value="cross-platform">
+                    <label class="form-check-label" for="wauthnKeyTypeCrossPlatform" title="The key is stored and managed by an external device, eg. your phone or YubiKey">
+                      Cross-platform
+                    </label>
+                  </div>
+                  </div>
+                </div>
+              </form>
+              </div>
+              <div class="modal-footer">
+                <button id="wauthnKeyCreateBtn" type="button" class="btn btn-primary" data-dismiss="modal"   onclick="createPublicKey($('#wauthnKeyName').val(),$('input[name=\'wauthnKeyType\']:checked').val());">Create</button>
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="forwardModal" class="modal" tabindex="-1" role="dialog">
+          <div class="modal-dialog" role="document">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Open SSH tunnel</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div  class="modal-body">
+                <p>You can open a tunnel through the SSH connection to a web endpoint/url accessible only locally on the server or on other host from the server. <br>
+                  After specifying the target url and clicking on Open the url will be opened in a new browser tab. </p>
+                <p>Always specify a full url with protocol (http:// or https://). If you provided a hostname not an IP and there's an issue try it with an IP address. 
+                  Currently hostnames are resolved by executing a 'getent ahosts HOSTNAME' command on the ssh server that might be not available or fail there.
+                </p>
+                <p>NOTE: this feature is currently in beta, maybe loading certain web pages fail or renders them partially broken.</p>
+                <input id="forwardUrlTxt" type="text" placeholder="local or remote url eg. http://localhost:8080" class="form-control" >
+                
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-dismiss="modal"   onclick="openWebTunel($('#forwardUrlTxt').val());">Open</button>
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      
+    
+    <div class="workspace" id="workspace">
+      <div class="toolbar">
+        <div class="pane-tabs" role="tablist" aria-label="Session panes">
+          <button class="pane-tab is-active" id="paneTermTab" type="button" role="tab" aria-selected="true">Terminal</button>
+          <button class="pane-tab" id="paneFilesTab" type="button" role="tab" aria-selected="false" disabled>Files</button>
+        </div>
+        <span class="spacer"></span>
+        <div class="search">
+          <input id="searchTxt" type="text" placeholder="Find in terminal" aria-label="Find in terminal">
+          <label class="check"><input type="checkbox" id="matchCaseChb">Match case</label>
+          <button class="ghost" type="button" onclick="searchAddon.findNext($('#searchTxt').val(),{caseSensitive:$('#matchCaseChb').prop('checked')});">Next</button>
+          <button class="ghost" type="button" onclick="searchAddon.findPrevious($('#searchTxt').val(),{caseSensitive:$('#matchCaseChb').prop('checked')});">Previous</button>
+        </div>
+        <span class="divider"></span>
+        <button class="ghost" type="button" title="Open a URL through this SSH connection" onclick="$('#forwardModal').modal('show');">Tunnel</button>
+        <button class="ghost" type="button" title="Fullscreen terminal" onclick="toggleFullScreen();">Fullscreen</button>
+        <button class="ghost" type="button" title="Download the session transcript" onclick="downloadHistory('ssheasy.txt');">Save log</button>
+      </div>
+
+      <div class="panes">
+        <section id="pane-term"><div id="terminal"></div></section>
+        <section class="d-none" id="fileBrowserRow">
+          <div class="iframe-container"><iframe id="fbFrame" title="File browser"></iframe></div>
+        </section>
+      </div>
+
+      <div class="statusbar">
+        <span id="conInf"></span>
+        <span class="spacer"></span>
+        <div id="msg"></div>
+        <div id="errMsg"></div>
+      </div>
+    </div>
+
+    <div class="connect" id="conPan">
+      <div class="connect-card">
+        <h2>Connect to a server</h2>
+        <p class="sub">Every tab is its own session: an SSH terminal, plus an SFTP file browser once you are connected.</p>
+        <div class="connect-body">
+          <form class="fields" onsubmit="return false;">
+            <div class="field"><label for="usrInp">User</label><input id="usrInp" type="text" value="root" autocomplete="off" spellcheck="false"></div>
+            <div class="field"><label for="hostInp">Host</label><input id="hostInp" type="text" value="testssh" autocomplete="off" spellcheck="false"></div>
+            <div class="field"><label for="portInp">Port</label><input id="portInp" type="number" value="22"></div>
+            <div class="field"><label for="passInp">Password / passphrase</label><input id="passInp" type="password" value="root" autocomplete="off"></div>
+            <div class="field span2">
+              <div class="label-row">
+                <label for="pkInp">Private key</label>
+                <label class="file-btn" for="pkFile">Choose file<input id="pkFile" type="file" hidden></label>
+              </div>
+              <textarea id="pkInp" rows="2" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" spellcheck="false"></textarea>
+            </div>
+            <div class="field span2">
+              <label for="webauthnKeySelect">Webauthn key</label>
+              <div class="row-inline">
+                <select id="webauthnKeySelect"><option selected>Select Webauthn Key</option></select>
+                <button class="ghost" type="button" onclick="showCreatePublicKey();">Create key</button>
+                <a class="file-btn" href="webauthn.html" target="_blank" rel="noopener">Learn more</a>
+              </div>
+            </div>
+            <label class="check span2"><input id="bypassProxyInp" type="checkbox">Bypass the ssheasy proxy (connect straight to host:port)</label>
+            <div class="span2">
+              <button id="conBtn" class="primary" type="button" disabled onclick="$('#conBtn').prop('disabled',true);showMsg('Connecting...');initConnection(term.rows, term.cols,$('#hostInp').val(),Number($('#portInp').val()),$('#usrInp').val(),$('#passInp').val(),$('#pkInp').val(), $('#bypassProxyInp').is(':checked'), false, $('#webauthnKeySelect').val() > -1);">Connect</button>
+            </div>
+          </form>
+          <aside class="recent">
+            <h3>Recent</h3>
+            <ul id="historyList"></ul>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      var term, searchAddon, serializeAddon, fitAddon;
+
+      function initXTerm() {
+        term = new Terminal({
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+          fontSize: 13,
+          lineHeight: 1.25,
+          cursorBlink: true,
+          theme: {
+            background: '#111418',
+            foreground: '#e4e8ee',
+            cursor: '#7aa7ff',
+            selectionBackground: '#2b3648'
+          }
+        });
+        term.loadAddon(new WebLinksAddon.WebLinksAddon());
+        fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        searchAddon = new SearchAddon.SearchAddon();
+        term.loadAddon(searchAddon);
+        serializeAddon = new SerializeAddon.SerializeAddon();
+        term.loadAddon(serializeAddon);
+
+        term.open(document.getElementById('terminal'));
+        fitAddon.fit();
+        term.write('ssheasy \u2014 SSH and SFTP in your browser.\r\n\r\n');
+        term.write('Fill in the connection details, then press Connect.\r\n');
+        term.write('Source: https://github.com/hullarb/ssheasy\r\n\r\n');
+        fitAddon.fit();
+
+        new ResizeObserver(function () {
+          fitAddon.fit();
+          if (typeof changeWindowSize === 'function') { changeWindowSize(term.rows, term.cols); }
+        }).observe(document.getElementById('terminal'));
+      }
+      initXTerm();
+    </script>
+
+    <script>
+      // Tab wiring. A session lives in its own document, so the shell can show
+      // its host on the tab; the panes here are the terminal and the files view.
+      function notifyParent(state, label) {
+        if (!window.parent || window.parent === window) { return; }
+        var msg = { type: 'ssheasy:' + state };
+        if (label) { msg.label = label; }
+        try { window.parent.postMessage(msg, window.location.origin); } catch (e) {}
+      }
+
+      function switchPane(name) {
+        var files = name === 'files';
+        var pane = document.getElementById('fileBrowserRow');
+        var frame = document.getElementById('fbFrame');
+        var termTab = document.getElementById('paneTermTab');
+        var filesTab = document.getElementById('paneFilesTab');
+        if (!pane || !termTab || !filesTab) { return; }
+        if (files) {
+          if (!frame.getAttribute('src')) { frame.setAttribute('src', 'browser.html'); }
+          pane.classList.remove('d-none');
+        } else {
+          pane.classList.add('d-none');
+        }
+        termTab.classList.toggle('is-active', !files);
+        filesTab.classList.toggle('is-active', files);
+        termTab.setAttribute('aria-selected', files ? 'false' : 'true');
+        filesTab.setAttribute('aria-selected', files ? 'true' : 'false');
+        if (!files) {
+          setTimeout(function () {
+            if (typeof fitAddon !== 'undefined' && fitAddon && term) {
+              fitAddon.fit();
+              if (typeof changeWindowSize === 'function') { changeWindowSize(term.rows, term.cols); }
+            }
+          }, 40);
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', function () {
+        document.getElementById('paneTermTab').addEventListener('click', function () { switchPane('term'); });
+        document.getElementById('paneFilesTab').addEventListener('click', function () { switchPane('files'); });
+        document.getElementById('searchTxt').addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            searchAddon.findNext(this.value, { caseSensitive: document.getElementById('matchCaseChb').checked });
+          }
+        });
+      });
+
+      // The connect button starts out disabled by the markup; with prefilled
+      // fields it should already be usable. Evaluate that ourselves (rather than
+      // calling the client's notReady, which may not be installed yet) and defer
+      // past any other load handlers that re-disable it.
+      window.addEventListener('load', function () {
+        setTimeout(function () {
+          var val = function (id) {
+            var el = document.getElementById(id);
+            return el ? el.value : '';
+          };
+          var keyed = val('passInp') !== '' || val('pkInp') !== '' ||
+            document.getElementById('webauthnKeySelect').value != -1;
+          var ready = val('hostInp') !== '' && val('portInp') !== '' && val('usrInp') !== '' && keyed;
+          document.getElementById('conBtn').disabled = !ready;
+          if (val('hostInp')) {
+            notifyParent('idle', val('usrInp') + '@' + val('hostInp'));
+          }
+        }, 0);
+      });
+    </script>
+  </body>
+</html>

@@ -16,6 +16,35 @@
     <link rel="stylesheet" href="node_modules/angular-filemanager/angular-filemanager.min.css">
     <script src="node_modules/angular-filemanager/angular-filemanager.min.js"></script>
 
+    <style>
+      /* Match the file manager to the host app's palette and type. */
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        font-size: 13px;
+      }
+      .navbar-inverse {
+        background-color: #2563eb;
+        border-color: #2563eb;
+      }
+      .navbar-inverse .navbar-nav > li > a,
+      .navbar-inverse .navbar-brand {
+        color: #ffffff;
+      }
+      .navbar-inverse .navbar-nav > li > a:hover,
+      .navbar-inverse .navbar-nav > li > a:focus {
+        color: #ffffff;
+        opacity: .85;
+      }
+      .breadcrumb {
+        padding: 6px 10px;
+        border: 1px solid #dde1e7;
+        border-radius: 8px;
+        background: #fafbfc;
+        font-size: 12px;
+      }
+      .breadcrumb > li + li:before { color: #a8b0bb; }
+    </style>
+
     <script type="text/javascript">
         angular.module('FileManagerApp').config(['fileManagerConfigProvider', function (config) {
             var defaults = config.$get();
