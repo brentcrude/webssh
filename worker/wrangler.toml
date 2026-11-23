@@ -1,0 +1,26 @@
+name = "ssheasy"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+# The same static client nginx serves in the Docker image.
+[assets]
+directory = "../web/html"
+binding = "ASSETS"
+# Serve files at their real paths (/session.html stays /session.html) and fall
+# back to index.html for client-side routes like /connect.
+html_handling = "none"
+not_found_handling = "single-page-application"
+
+[[durable_objects.bindings]]
+name = "RELAY"
+class_name = "Relay"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Relay"]
+
+# Secrets (never commit these):
+#   npx wrangler secret put RELAY_PASSWORD
+#   npx wrangler secret put AUTH_SECRET      # any long random string
+# With both set, /p requires a signed-in session; with them unset, the relay is
+# open — fine for `wrangler dev`, never for a public hostname.

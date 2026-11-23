@@ -1,2 +1,6 @@
 grafana/data/
 prometheus/data/
+
+# Worker tooling
+worker/node_modules/
+worker/.wrangler/
