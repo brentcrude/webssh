@@ -1,0 +1,18 @@
+# Locally-managed Cloudflare Tunnel for macOS Screen Sharing.
+#
+#   1. cloudflared tunnel login
+#   2. cloudflared tunnel create mac-remote      # prints the UUID below
+#   3. cloudflared tunnel route dns mac-remote vnc.example.me
+#   4. run: cloudflared tunnel --config ./config.yml run mac-remote
+#
+# Replace TUNNEL_UUID, YOUR_USER and vnc.example.me before use.
+
+tunnel: TUNNEL_UUID
+credentials-file: /Users/YOUR_USER/.cloudflared/TUNNEL_UUID.json
+
+# Screen Sharing on macOS listens on 5900 for both its own client and third-party
+# VNC viewers. Cloudflare Access renders the browser VNC client in front of this.
+ingress:
+  - hostname: vnc.example.me
+    service: tcp://127.0.0.1:5900
+  - service: http_status:404
