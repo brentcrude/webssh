@@ -5,10 +5,14 @@
 #   3. cloudflared tunnel route dns mac-remote vnc.knerd.tech
 #   4. run: cloudflared tunnel --config ./config.yml run mac-remote
 #
-# Replace TUNNEL_UUID and YOUR_USER before use. The hostname is already set.
+# Only needed for the locally-managed variant. If you created the tunnel in the dashboard
+# and installed the connector with `sudo cloudflared service install <token>` (the
+# recommended path, see README step 2), you do not need this file at all.
+#
+# Replace TUNNEL_UUID before use. The hostname and username are already set.
 
 tunnel: TUNNEL_UUID
-credentials-file: /Users/YOUR_USER/.cloudflared/TUNNEL_UUID.json
+credentials-file: /Users/knerd/.cloudflared/TUNNEL_UUID.json
 
 # Screen Sharing on macOS listens on 5900 for both its own client and third-party
 # VNC viewers. Cloudflare Access renders the browser VNC client in front of this.

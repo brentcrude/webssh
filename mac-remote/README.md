@@ -41,6 +41,7 @@ and run Guacamole there. For one Mac, this is strictly less work.
 |---|---|---|
 | `knerd.tech` | already owned | Name.com |
 | Cloudflare account + `knerd.tech` added as a zone | $0 | dash.cloudflare.com |
+| Zero Trust organization (free plan, up to 50 users) | $0, **but card details are required at signup** | Zero Trust onboarding |
 | `cloudflared` | $0 | `brew install cloudflared` |
 
 ## Steps
@@ -85,20 +86,43 @@ sudo lsof -iTCP:5900 -sTCP:LISTEN -nP
 
 You want a LISTEN line on `5900`. No output means Screen Sharing is not on.
 
-### 2. Create the tunnel
+### 2. Create the tunnel in the dashboard
+
+Use a **dashboard-managed** tunnel, not a locally-managed one. It is what Cloudflare's own
+VNC guide assumes, the connector starts at boot by itself, and there is no config file or
+UUID to fill in.
+
+1. Dashboard → **Networking → Tunnels → Create a tunnel → Cloudflared** → name it
+   `mac-remote` → Save.
+2. Choose **macOS** and run the two commands it shows:
+
+   ```sh
+   brew install cloudflared
+   sudo cloudflared service install <TOKEN-FROM-THE-DASHBOARD>
+   ```
+
+   The token is a credential for this tunnel: keep it out of git and out of chat. The
+   second command registers a launch daemon, so the tunnel is running now and comes back
+   after a reboot.
+3. The tunnel should show **Healthy** in the dashboard within a minute.
+
+<details>
+<summary>Alternative: locally-managed tunnel (the config.yml in this repo)</summary>
+
+`cloudflared/config.yml` and the LaunchAgent are for the other style:
 
 ```sh
 cloudflared tunnel login
-cloudflared tunnel create mac-remote
+cloudflared tunnel create mac-remote          # prints the UUID
 cloudflared tunnel route dns mac-remote vnc.knerd.tech
+cp cloudflared/config.yml ~/.cloudflared/config.yml   # then fill in the UUID
+cloudflared tunnel --config ~/.cloudflared/config.yml run mac-remote
 ```
 
-Copy `cloudflared/config.yml` into place and fill in the tunnel UUID and your paths, then
-run it in the foreground once to confirm it starts:
+Same result, but you maintain the ingress yourself. Only take this path if you want the
+routing in version control.
 
-```sh
-cloudflared tunnel --config ./cloudflared/config.yml run mac-remote
-```
+</details>
 
 ### 3. Publish the route and put Access in front
 
@@ -106,6 +130,8 @@ In the dashboard:
 
 1. **Networking → Tunnels → mac-remote → Routes → Add route → Published application.**
    Pick `knerd.tech`, subdomain `vnc`, **Service: TCP**, address `localhost:5900`.
+   `localhost` is correct because `cloudflared` runs on the same Mac as Screen Sharing;
+   from another machine it would be that machine's IP.
 2. **Zero Trust → Access controls → Applications → Create new application →
    Self-hosted and private.** Add the same public hostname.
 3. Turn on **"Allow access through browser-based RDP, SSH, or VNC sessions"** and choose
@@ -117,9 +143,17 @@ Only **Allow** and **Block** policies work for browser-rendered apps. **Bypass**
 
 ### 4. Keep it running and keep the Mac awake
 
+If you installed the connector with `sudo cloudflared service install` in step 2, it is
+already a launch daemon — nothing to do. Confirm with:
+
+```sh
+sudo launchctl list | grep cloudflared     # should print a line
+```
+
+Only for the locally-managed variant, load the LaunchAgent instead:
+
 ```sh
 cp cloudflared/com.cloudflare.macremote.plist ~/Library/LaunchAgents/
-# edit the USER placeholders first
 launchctl load ~/Library/LaunchAgents/com.cloudflare.macremote.plist
 ```
 
