@@ -3,8 +3,9 @@
 <!--
   Keeps the tunnel up as a user LaunchAgent.
 
-  Replace YOUR_USER and the config path (Intel Macs: /usr/local/bin/cloudflared),
-  then:
+  Replace YOUR_USER below, and the config path if the repo is not at ~/mac-remote
+  (Intel Macs: /usr/local/bin/cloudflared), then:
+      sed -i '' "s/YOUR_USER/$(whoami)/g" com.cloudflare.macremote.plist
       cp com.cloudflare.macremote.plist ~/Library/LaunchAgents/
       launchctl load ~/Library/LaunchAgents/com.cloudflare.macremote.plist
   Logs: /tmp/cloudflared-macremote.log
