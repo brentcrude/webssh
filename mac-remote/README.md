@@ -39,11 +39,30 @@ and run Guacamole there. For one Mac, this is strictly less work.
 
 | Thing | Cost | Where |
 |---|---|---|
-| `.me` domain, 1 year | $0 | Namecheap student offer via the GitHub Student Pack |
-| Cloudflare account + the domain added as a zone | $0 | dash.cloudflare.com |
+| `knerd.tech` | already owned | Name.com |
+| Cloudflare account + `knerd.tech` added as a zone | $0 | dash.cloudflare.com |
 | `cloudflared` | $0 | `brew install cloudflared` |
 
 ## Steps
+
+### 0. Point the domain at Cloudflare
+
+Everything below assumes `knerd.tech` is a zone in your Cloudflare account. While it is
+still on Name.com's nameservers, the tunnel route and the Access application cannot be
+created at all.
+
+1. Cloudflare dashboard → **Add a site** → `knerd.tech` → **Free** plan. Cloudflare then
+   shows you two nameservers, e.g. `ada.ns.cloudflare.com` and `bob.ns.cloudflare.com`.
+2. Name.com → the domain → **Nameservers** → *Manage* → switch to custom nameservers and
+   enter those two. Remove Name.com's own four. This is what Cloudflare calls a **full
+   setup**, and it is the only free option; Cloudflare's partial (CNAME) setup needs a
+   paid plan and is not used here.
+
+Propagation is usually minutes and can take up to 24 hours. Confirm before continuing:
+
+```sh
+dig +short NS knerd.tech      # must list *.ns.cloudflare.com, not *.name.com
+```
 
 ### 1. Turn on Screen Sharing on the Mac
 
@@ -71,7 +90,7 @@ You want a LISTEN line on `5900`. No output means Screen Sharing is not on.
 ```sh
 cloudflared tunnel login
 cloudflared tunnel create mac-remote
-cloudflared tunnel route dns mac-remote vnc.example.me
+cloudflared tunnel route dns mac-remote vnc.knerd.tech
 ```
 
 Copy `cloudflared/config.yml` into place and fill in the tunnel UUID and your paths, then
@@ -86,7 +105,7 @@ cloudflared tunnel --config ./cloudflared/config.yml run mac-remote
 In the dashboard:
 
 1. **Networking → Tunnels → mac-remote → Routes → Add route → Published application.**
-   Pick your domain, subdomain `vnc`, **Service: TCP**, address `localhost:5900`.
+   Pick `knerd.tech`, subdomain `vnc`, **Service: TCP**, address `localhost:5900`.
 2. **Zero Trust → Access controls → Applications → Create new application →
    Self-hosted and private.** Add the same public hostname.
 3. Turn on **"Allow access through browser-based RDP, SSH, or VNC sessions"** and choose
@@ -110,7 +129,7 @@ the display is off") or run `caffeinate -s` in a terminal.
 
 ### 5. Connect
 
-Open `https://vnc.example.me` in any browser, sign in through Access, then enter the VNC
+Open `https://vnc.knerd.tech` in any browser, sign in through Access, then enter the VNC
 password. The desktop renders in the page.
 
 ## Preflight
