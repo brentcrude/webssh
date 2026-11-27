@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Keeps the tunnel up as a user LaunchAgent.
+  Optional. Only for the locally-managed tunnel variant: if you installed the connector
+  with `sudo cloudflared service install <token>` from the dashboard, this file is not
+  needed - that already registers a launch daemon that starts at boot.
 
-  Replace YOUR_USER below, and the config path if the repo is not at ~/mac-remote
-  (Intel Macs: /usr/local/bin/cloudflared), then:
-      sed -i '' "s/YOUR_USER/$(whoami)/g" com.cloudflare.macremote.plist
+  Expects config.yml at ~/.cloudflared/config.yml (Intel Macs:
+  /usr/local/bin/cloudflared), then:
       cp com.cloudflare.macremote.plist ~/Library/LaunchAgents/
       launchctl load ~/Library/LaunchAgents/com.cloudflare.macremote.plist
   Logs: /tmp/cloudflared-macremote.log
@@ -21,7 +22,7 @@
     <string>--no-autoupdate</string>
     <string>tunnel</string>
     <string>--config</string>
-    <string>/Users/YOUR_USER/mac-remote/cloudflared/config.yml</string>
+    <string>/Users/knerd/.cloudflared/config.yml</string>
     <string>run</string>
     <string>mac-remote</string>
   </array>
