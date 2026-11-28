@@ -176,8 +176,11 @@ raw VNC. What stands in front of it is an HTTP Basic password and then the VNC p
 
 This endpoint is public: the tunnel publishes it with no identity check, so the only
 gates are those two passwords. Keep the generated 24-character Basic password, and
-optionally add one Cloudflare **rate limiting** rule for `vnc.knerd.tech` (the Free plan
-allows a single rule) to blunt password guessing. Nothing on the Mac listens beyond
+optionally add one Cloudflare **rate limiting** rule to blunt password guessing. The Free
+plan allows exactly one rule and it is coarse: it always counts by IP, the period is fixed
+at 10 seconds, the block lasts a fixed 10 seconds, and the expression can only test the
+request path (host matching is a paid field). This zone serves only `vnc`, so match every
+path and set the threshold well above a page load, e.g. 100 requests per 10 seconds. Nothing on the Mac listens beyond
 loopback, so the tunnel remains the only way in.
 
 ### 4. Keep it running and keep the Mac awake
