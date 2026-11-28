@@ -172,7 +172,24 @@ raw VNC. What stands in front of it is an HTTP Basic password and then the VNC p
    **Networking -> Tunnels -> mac-remote -> Routes -> Add route -> Published application**,
    domain `knerd.tech`, subdomain `vnc`, **Service: HTTP**, URL `localhost:6080`.
 
-3. Open `https://vnc.knerd.tech/vnc.html`. Basic password first, then the VNC password.
+3. Open `https://vnc.knerd.tech/`. Basic password first, then the VNC password.
+
+   `/` serves `web/index.html` from this repo, a small front-end written for this setup rather
+   than noVNC's stock `vnc.html`:
+
+   | Control | What it does |
+   |---|---|
+   | **Fit** | scales the desktop to the window (the default) |
+   | **1:1** | real pixels, scrollbars appear |
+   | **−** / **+** | zoom steps, 25% to 300%; Ctrl/⌘ + wheel does the same |
+   | **Full** | fullscreen |
+   | **esc** / **tab** | send that key to the Mac |
+   | **ctrl** / **alt** / **⌘** | latch a modifier for the next keystroke; tap again to release |
+   | **paste** | sends text to the remote clipboard (Ctrl/⌘-V in the page works too) |
+   | **disconnect** | closes the session |
+
+   A status pill in the top-left reports connecting, connected, or the failure reason. The
+   stock client is still there at `/vnc.html` if you ever need to compare behaviour.
 
 This endpoint is public: the tunnel publishes it with no identity check, so the only
 gates are those two passwords. Keep the generated 24-character Basic password, and
@@ -212,8 +229,8 @@ the display is off") or run `caffeinate -s` in a terminal.
 With Access (3a): open `https://vnc.knerd.tech`, sign in through Access, then enter the
 VNC password. The desktop renders in the page.
 
-Without Access (3b): open `https://vnc.knerd.tech/vnc.html`, enter the Basic password
-from `~/.local/share/mac-remote/novnc-auth`, then the VNC password.
+Without Access (3b): open `https://vnc.knerd.tech/`, enter the Basic password from
+`~/.local/share/mac-remote/novnc-auth`, then the VNC password.
 
 ## Preflight
 

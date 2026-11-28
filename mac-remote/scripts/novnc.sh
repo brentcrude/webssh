@@ -55,6 +55,8 @@ setup() {
     rm -rf "$tmp"
   fi
 
+  sync_web
+
   if [ ! -f "$AUTH_FILE" ]; then
     # Usernames and passwords here are only meaningful to websockify, so the macOS
     # account name is used as the username and the password is generated.
@@ -70,12 +72,25 @@ setup() {
   fi
 }
 
+# Our own front-end (mac-remote/web/index.html) replaces the stock noVNC page: it has a
+# labelled toolbar, a real fit/zoom model, and latching modifier keys. The stock
+# vnc.html and vnc_lite.html stay available as fallbacks.
+sync_web() {
+  src="$(self_path)/../web/index.html"
+  if [ ! -f "$src" ]; then
+    printf 'warning: %s not found; / will serve the stock noVNC page\n' "$src" >&2
+    return 0
+  fi
+  cp "$src" "${WEB}/index.html"
+}
+
 do_run() {
   setup
   [ -f "$AUTH_FILE" ] || die "missing $AUTH_FILE"
   [ -f "${WEB}/vnc.html" ] || die "noVNC is not installed in $WEB"
   creds="$(cat "$AUTH_FILE")"
   printf 'websockify %s -> %s (web root %s)\n' "$BIND" "$VNC_TARGET" "$WEB"
+  printf 'open the tunnel URL at / (or /vnc.html for the stock client)\n'
   exec "${VENV}/bin/websockify" \
     --web "$WEB" \
     --web-auth \
