@@ -15,19 +15,19 @@ else
 fi
 
 echo
-echo "Screen Sharing (expected: LISTEN on 5900)"
+echo "VNC server (expected: LISTEN on 5900)"
 if command -v lsof >/dev/null 2>&1 && lsof -iTCP:5900 -sTCP:LISTEN -nP 2>/dev/null | grep -q LISTEN; then
   ok "something is listening on 5900"
 else
-  bad "nothing listening on 5900: enable System Settings > General > Sharing > Screen Sharing"
+  bad "nothing listening on 5900: enable Screen Sharing or Remote Management in System Settings > General > Sharing"
 fi
 
 echo
-echo "Remote Management (must be off, it conflicts with Screen Sharing)"
+echo "VNC flavour (Screen Sharing or Remote Management: either is fine, not both)"
 if pgrep -x ARDAgent >/dev/null 2>&1; then
-  bad "ARDAgent is running: turn Remote Management off, then re-enable Screen Sharing"
+  ok "Remote Management (ARDAgent) is serving VNC: leave it alone, keep the VNC password set"
 else
-  ok "Remote Management does not appear to be running"
+  ok "Remote Management not running: Screen Sharing should be the one on 5900"
 fi
 
 echo

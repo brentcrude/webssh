@@ -65,26 +65,25 @@ Propagation is usually minutes and can take up to 24 hours. Confirm before conti
 dig +short NS knerd.tech      # must list *.ns.cloudflare.com, not *.name.com
 ```
 
-### 1. Turn on Screen Sharing on the Mac
+### 1. Make sure something is serving VNC on 5900
 
-System Settings → General → Sharing:
+Exactly one of two Sharing services owns port 5900, and which one is irrelevant here:
+**Screen Sharing** and **Remote Management** cannot both be on at once (enabling one
+turns the other off), but both speak VNC on that port and both offer the same
+"VNC viewers may control screen with password" option.
 
-1. **Turn Remote Management OFF first.** macOS will not run Screen Sharing and Remote
-   Management together, and on recent macOS re-enabling one can silently flip the other.
-2. Turn **Screen Sharing** on.
-3. Click the ⓘ / **Computer Settings** and enable **"VNC viewers may control screen with
-   password"**, then set a password.
+**If VNC already works on this Mac, including with Remote Management on, change
+nothing.** Remote Management does not need to be off. It is a valid VNC server, just the
+Apple Remote Desktop flavour of one, and the tunnel only cares that something answers on
+5900.
+
+If nothing is serving VNC yet: System Settings -> General -> Sharing -> **Screen Sharing**
+-> the Info button -> enable "VNC viewers may control screen with password" and set a
+password. Choose Remote Management instead only if you also want Apple Remote Desktop's
+admin tooling (software installs, Remote Desktop reports).
 
 Two hard limits on that password: it is **at most 8 characters** (classic VNC auth is DES
 and silently truncates), and it must not be a macOS account password.
-
-Verify the server is listening:
-
-```sh
-sudo lsof -iTCP:5900 -sTCP:LISTEN -nP
-```
-
-You want a LISTEN line on `5900`. No output means Screen Sharing is not on.
 
 ### 2. Create the tunnel in the dashboard
 
@@ -172,9 +171,9 @@ password. The desktop renders in the page.
 ./scripts/preflight.sh
 ```
 
-Checks that this is macOS, that something is listening on 5900, whether Remote Management
-is running (which breaks Screen Sharing), whether the Mac is set to sleep, and whether
-`cloudflared` is installed.
+Checks that this is macOS, that something is listening on 5900, which of the two Sharing
+services (Screen Sharing or Remote Management) is serving it, whether the Mac is set to
+sleep, and whether `cloudflared` is installed.
 
 ## Caveats worth knowing before you rely on this
 
@@ -183,6 +182,10 @@ is running (which breaks Screen Sharing), whether the Mac is set to sleep, and w
   password enabled, authentication is password-only, so this normally does not bite. If
   Cloudflare insists on a username, create a macOS account whose short name equals the
   part of your email before the `@`.
+- **Screen Sharing and Remote Management are the same job.** Only one can be on, so a
+  working VNC setup can end up on the other flavour after a macOS update. Both listen on
+  5900; only the VNC password handling differs. If a viewer accepts the password and then
+  hangs, check which of the two is currently enabled.
 - **Legacy VNC is unencrypted on the wire.** Here the only unencrypted hop is
   `cloudflared` → `127.0.0.1:5900`. Browser to edge is TLS, and edge to `cloudflared` is a
   TLS tunnel, so nothing crosses the internet in the clear. Do not expose 5900 directly
