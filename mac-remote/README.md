@@ -20,6 +20,10 @@ Cloudflare edge ── renders the VNC client ──► cloudflared tunnel (outb
 Nothing is published inbound on the Mac. `cloudflared` dials out to Cloudflare and the
 only reachable address is loopback.
 
+**No card to give Cloudflare?** Cloudflare Access cannot be created without payment
+details, so take the other branch of step 3: the Mac serves noVNC itself and the tunnel
+carries HTTP to it. Same domain, same tunnel, no Access, no card. Read step 3b.
+
 ## Why this and not a tailnet gateway
 
 - **DigitalOcean's $200 student credit no longer exists.** It left the GitHub Student
@@ -41,7 +45,7 @@ and run Guacamole there. For one Mac, this is strictly less work.
 |---|---|---|
 | `knerd.tech` | already owned | Name.com |
 | Cloudflare account + `knerd.tech` added as a zone | $0 | dash.cloudflare.com |
-| Zero Trust organization (free plan, up to 50 users) | $0, **but card details are required at signup** | Zero Trust onboarding |
+| Zero Trust organization (free plan, up to 50 users) | $0, **but card details are required at signup** | only for step 3a; step 3b needs no card |
 | `cloudflared` | $0 | `brew install cloudflared` |
 
 ## Steps
@@ -123,22 +127,58 @@ routing in version control.
 
 </details>
 
-### 3. Publish the route and put Access in front
+### 3. Publish the route, and choose how it is protected
 
-In the dashboard:
+The tunnel itself is free and needs no payment method. Cloudflare **Access** does not:
+creating a Zero Trust organization requires card details even on the Free plan
+("You need to provide a payment method"). So there are two branches, and only the first
+one uses Access.
 
-1. **Networking → Tunnels → mac-remote → Routes → Add route → Published application.**
-   Pick `knerd.tech`, subdomain `vnc`, **Service: TCP**, address `localhost:5900`.
-   `localhost` is correct because `cloudflared` runs on the same Mac as Screen Sharing;
-   from another machine it would be that machine's IP.
-2. **Zero Trust → Access controls → Applications → Create new application →
-   Self-hosted and private.** Add the same public hostname.
+#### 3a. With Access: Cloudflare renders the VNC client (card required)
+
+1. **Networking -> Tunnels -> mac-remote -> Routes -> Add route -> Published
+   application.** Pick `knerd.tech`, subdomain `vnc`, **Service: TCP**, address
+   `localhost:5900`. `localhost` is correct because `cloudflared` runs on the same Mac as
+   the VNC server; from another machine it would be that machine's IP.
+2. **Access controls -> Applications -> Create new application -> Self-hosted and
+   private.** Add the same public hostname.
 3. Turn on **"Allow access through browser-based RDP, SSH, or VNC sessions"** and choose
    **VNC**.
 4. Add an **Allow** policy (e.g. your email address, verified by one-time PIN).
 
 Only **Allow** and **Block** policies work for browser-rendered apps. **Bypass** and
 **Service Auth** are silently unsupported.
+
+#### 3b. Without Access: noVNC on the Mac, no card
+
+Cloudflare renders nothing on this path. The Mac serves the browser client itself with
+`scripts/novnc.sh` (noVNC + websockify), so the tunnel carries ordinary HTTP instead of
+raw VNC. What stands in front of it is an HTTP Basic password and then the VNC password.
+
+1. Start the web client on the Mac:
+
+   ```sh
+   ./scripts/novnc.sh start
+   ```
+
+   The first run creates a venv, downloads noVNC, generates a 24-character Basic
+   password, and prints it once. It is stored in
+   `~/.local/share/mac-remote/novnc-auth` (mode 600). Re-run `./scripts/novnc.sh status`
+   to check it, `stop` to stop it, and `install-agent` to start it at login through
+   launchd. It listens on `127.0.0.1:6080` only and forwards to `localhost:5900`.
+
+2. Same route as 3a, but the service is HTTP:
+
+   **Networking -> Tunnels -> mac-remote -> Routes -> Add route -> Published application**,
+   domain `knerd.tech`, subdomain `vnc`, **Service: HTTP**, URL `localhost:6080`.
+
+3. Open `https://vnc.knerd.tech/vnc.html`. Basic password first, then the VNC password.
+
+This endpoint is public: the tunnel publishes it with no identity check, so the only
+gates are those two passwords. Keep the generated 24-character Basic password, and
+optionally add one Cloudflare **rate limiting** rule for `vnc.knerd.tech` (the Free plan
+allows a single rule) to blunt password guessing. Nothing on the Mac listens beyond
+loopback, so the tunnel remains the only way in.
 
 ### 4. Keep it running and keep the Mac awake
 
@@ -156,14 +196,21 @@ cp cloudflared/com.cloudflare.macremote.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.cloudflare.macremote.plist
 ```
 
+On the no-card path there is a second process to keep alive. `./scripts/novnc.sh
+install-agent` writes `~/Library/LaunchAgents/com.macremote.novnc.plist` pointing at where
+this checkout currently lives, so install it from the directory you intend to keep.
+
 Screen Sharing dies when the Mac sleeps, so either stop it sleeping while plugged in
 (System Settings → Battery → Options → "Prevent automatic sleeping on power adapter when
 the display is off") or run `caffeinate -s` in a terminal.
 
 ### 5. Connect
 
-Open `https://vnc.knerd.tech` in any browser, sign in through Access, then enter the VNC
-password. The desktop renders in the page.
+With Access (3a): open `https://vnc.knerd.tech`, sign in through Access, then enter the
+VNC password. The desktop renders in the page.
+
+Without Access (3b): open `https://vnc.knerd.tech/vnc.html`, enter the Basic password
+from `~/.local/share/mac-remote/novnc-auth`, then the VNC password.
 
 ## Preflight
 
@@ -186,6 +233,11 @@ sleep, and whether `cloudflared` is installed.
   working VNC setup can end up on the other flavour after a macOS update. Both listen on
   5900; only the VNC password handling differs. If a viewer accepts the password and then
   hangs, check which of the two is currently enabled.
+- **The no-card path has no per-user identity.** Anyone who finds `vnc.knerd.tech` reaches
+  the login form; it is a shared Basic password plus the VNC password, with no email
+  verification, no session expiry tied to a person, and no audit log beyond 24 hours of
+  HTTP logs. That is the cost of avoiding the card. Remove the published route
+  (`cloudflared` tunnel route) when you do not need remote access.
 - **Legacy VNC is unencrypted on the wire.** Here the only unencrypted hop is
   `cloudflared` → `127.0.0.1:5900`. Browser to edge is TLS, and edge to `cloudflared` is a
   TLS tunnel, so nothing crosses the internet in the clear. Do not expose 5900 directly

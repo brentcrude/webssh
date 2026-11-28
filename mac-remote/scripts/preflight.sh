@@ -44,6 +44,16 @@ else
 fi
 
 echo
+echo "noVNC (only needed on the no-card path, step 3b)"
+if lsof -iTCP:6080 -sTCP:LISTEN -nP 2>/dev/null | grep -q LISTEN; then
+  ok "websockify is listening on 6080"
+elif [ -f "$HOME/.local/share/mac-remote/venv/bin/websockify" ]; then
+  warn "websockify installed but not running: ./scripts/novnc.sh start"
+else
+  warn "noVNC not set up (expected if you are using Cloudflare Access instead)"
+fi
+
+echo
 echo "cloudflared"
 if command -v cloudflared >/dev/null 2>&1; then
   ok "$(cloudflared --version 2>&1 | head -n 1)"
@@ -54,8 +64,9 @@ fi
 echo
 echo "Reminders the script cannot check"
 echo "  - the VNC password is at most 8 characters and is not a macOS account password"
-echo "  - the Access application uses only Allow or Block policies (no Bypass, no Service Auth)"
-echo "  - the tunnel route service is TCP to localhost:5900"
+echo "  - with Access: the application uses only Allow or Block policies (no Bypass)"
+echo "  - with Access: the tunnel route service is TCP to localhost:5900"
+echo "  - without Access: the tunnel route service is HTTP to localhost:6080"
 
 echo
 if [ "$fail" -ne 0 ]; then

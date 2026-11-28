@@ -14,9 +14,16 @@
 tunnel: TUNNEL_UUID
 credentials-file: /Users/knerd/.cloudflared/TUNNEL_UUID.json
 
-# Screen Sharing on macOS listens on 5900 for both its own client and third-party
-# VNC viewers. Cloudflare Access renders the browser VNC client in front of this.
+# Two shapes depending on the path you took:
+#
+#   no-card path (README step 3b): noVNC is served by websockify on 6080, so the tunnel
+#   carries plain HTTP. This is the default below.
+#
+#   Access path (README step 3a): Cloudflare renders the VNC client itself, so the tunnel
+#   must carry raw TCP:
+#     - hostname: vnc.knerd.tech
+#       service: tcp://127.0.0.1:5900
 ingress:
   - hostname: vnc.knerd.tech
-    service: tcp://127.0.0.1:5900
+    service: http://127.0.0.1:6080
   - service: http_status:404
